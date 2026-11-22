@@ -1,0 +1,15 @@
+# Hemmeligheder: alle .env-filer holdes væk fra GitHub, undtagen skabelonen
+.env
+.env.*
+*.env
+!.env.example
+
+# Python og værktøjer
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Mac
+.DS_Store

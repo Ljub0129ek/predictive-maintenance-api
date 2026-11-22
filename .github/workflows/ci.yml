@@ -1,0 +1,43 @@
+# CI: kører tests og sikkerhedsscans automatisk ved hvert push og pull request til GitHub.
+# Fejler et trin, bliver hele kørslen rød, og Docker-imaget bygges ikke.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installér afhængigheder
+        run: pip install -r requirements.txt
+      - name: Kør tests
+        run: pytest -v
+
+  security:
+    # DevSecOps: sikkerhed tjekkes automatisk, før koden kan bygges
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installér scannere
+        run: pip install bandit==1.8.6 pip-audit==2.9.0
+      - name: Kodescan (Bandit) - leder efter usikker kode, fx SQL-injection og hårdkodede adgangskoder
+        run: bandit -r predictive_maintenance
+      - name: Pakkescan (pip-audit) - leder efter kendte sikkerhedshuller i pakkerne
+        run: pip-audit -r requirements.txt
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Byg Docker-image
+        run: docker build -t predictive-maintenance-api .

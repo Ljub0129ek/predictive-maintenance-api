@@ -1,0 +1,339 @@
+{
+  "info": {
+    "name": "Predictive Maintenance API",
+    "description": "Demo af flowet fra Delopgave 1: SensorTelemetryReceived -> threshold-check -> AnomalyDetected -> Alarm. Kør trinene i rækkefølge (eller hele mappen med Run).\n\nPOST-kaldene kræver API-nøgle: sæt variablen api_key (fanen Variables) til værdien API_KEY fra filen .env.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "api_key",
+      "value": "INDSÆT-NØGLEN-FRA-.env"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 Health: kører API og database?",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Databasen er oppe', () => pm.expect(pm.response.json().database).to.eql('up'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Tjekker at API'et kører, og at MySQL svarer."
+      }
+    },
+    {
+      "name": "1 Normal værdi 4.0 (ingen alarm)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b = pm.response.json();",
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Ingen anomali', () => pm.expect(b.anomaly_detected).to.be.false);",
+              "pm.test('Ingen alarm', () => pm.expect(b.alarms).to.have.length(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"asset_id\": \"WTG-001\",\n  \"sensor_type\": \"vibration\",\n  \"value\": 4.0,\n  \"unit\": \"mm/s\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/telemetry",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "telemetry"
+          ]
+        },
+        "description": "Vibration 4.0 mm/s er under grænsen 7,5. Kun SensorTelemetryReceived, ingen alarm."
+      }
+    },
+    {
+      "name": "2 Høj værdi 8.9 (alarm WARNING)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b = pm.response.json();",
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Anomali fundet', () => pm.expect(b.anomaly_detected).to.be.true);",
+              "pm.test('Alarm er WARNING', () => pm.expect(b.alarms[0].severity).to.eql('WARNING'));",
+              "pm.test('Mølle markeret til vedligehold', () => pm.expect(b.is_flagged_for_maintenance).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"asset_id\": \"WTG-001\",\n  \"sensor_type\": \"vibration\",\n  \"value\": 8.9,\n  \"unit\": \"mm/s\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/telemetry",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "telemetry"
+          ]
+        },
+        "description": "Vibration 8.9 mm/s er over grænsen 7,5. Giver AnomalyDetected og en WARNING-alarm, som gemmes i MySQL."
+      }
+    },
+    {
+      "name": "3 Se alarmer for WTG-001",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Mindst én alarm', () => pm.expect(pm.response.json().length).to.be.above(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/alarms?asset_id=WTG-001",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "alarms"
+          ],
+          "query": [
+            {
+              "key": "asset_id",
+              "value": "WTG-001"
+            }
+          ]
+        },
+        "description": "Viser alle alarmer, der er gemt i MySQL for vindmøllen WTG-001."
+      }
+    },
+    {
+      "name": "4 Kritisk værdi 12.0 (alarm CRITICAL)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Alarm er CRITICAL', () => pm.expect(pm.response.json().alarms[0].severity).to.eql('CRITICAL'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"asset_id\": \"WTG-001\",\n  \"sensor_type\": \"vibration\",\n  \"value\": 12.0,\n  \"unit\": \"mm/s\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/telemetry",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "telemetry"
+          ]
+        },
+        "description": "12.0 er over 1,5 x grænsen (11,25), så alarmen bliver CRITICAL."
+      }
+    },
+    {
+      "name": "5 Se hændelser for WTG-001",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/events?asset_id=WTG-001",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "events"
+          ],
+          "query": [
+            {
+              "key": "asset_id",
+              "value": "WTG-001"
+            }
+          ]
+        },
+        "description": "Viser domænehændelserne SensorTelemetryReceived og AnomalyDetected i rækkefølge."
+      }
+    },
+    {
+      "name": "6 Ukendt mølle (fejl 404)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 404', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"asset_id\": \"WTG-999\",\n  \"sensor_type\": \"vibration\",\n  \"value\": 8.9,\n  \"unit\": \"mm/s\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/telemetry",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "telemetry"
+          ]
+        },
+        "description": "Et asset, der ikke findes, giver fejl 404 i stedet for en alarm."
+      }
+    },
+    {
+      "name": "7 Uden API-nøgle (fejl 401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"asset_id\": \"WTG-001\",\n  \"sensor_type\": \"vibration\",\n  \"value\": 8.9,\n  \"unit\": \"mm/s\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/telemetry",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "telemetry"
+          ]
+        },
+        "description": "Samme høje værdi 8.9, men uden API-nøgle. Kaldet afvises med 401, og der oprettes ingen alarm."
+      }
+    }
+  ]
+}
