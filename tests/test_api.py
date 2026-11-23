@@ -181,3 +181,11 @@ def test_audit_log_is_written_to_file(tmp_path, monkeypatch):
     assert "WARNING Afvist API-nøgle" in text
     assert "status=401" in text
     assert "gaet-5678" not in text
+
+
+def test_only_vibration_is_accepted(client):
+    r = client.post(
+        "/api/v1/telemetry",
+        json={"asset_id": "WTG-001", "sensor_type": "temperature", "value": 40.0, "unit": "C"},
+    )
+    assert r.status_code == 422

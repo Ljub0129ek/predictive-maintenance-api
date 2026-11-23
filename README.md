@@ -135,7 +135,7 @@ Start forfra med tom database: `docker compose down -v && docker compose up -d`.
 
 - Adgangskoder ligger i `.env`, som ikke kommer på GitHub (`.gitignore`).
 - Al SQL er parametriseret, så input ikke kan ændre SQL-sætningen.
-- Input valideres af Pydantic (vibration skal være 0 til 100 mm/s, ellers 422) og af domænets value objects.
+- Input valideres af Pydantic (kun `sensor_type` "vibration", værdi 0 til 100 mm/s, ellers 422) og af domænets value objects.
 - API-containeren kører ikke som root.
 - CI kører to sikkerhedsscans ved hvert push (DevSecOps):
   - **Bandit** scanner koden for usikre mønstre, fx SQL-injection og hårdkodede adgangskoder.

@@ -114,6 +114,8 @@ def create_app(
             "Grænsen for vibration er 7,5 mm/s. Over grænsen = WARNING, over 1,5 x grænsen = CRITICAL."
         ),
         openapi_tags=TAGS,
+        # Skjul den tekniske Schemas-sektion nederst i Swagger (findes stadig under hvert endpoint)
+        swagger_ui_parameters={"defaultModelsExpandDepth": -1},
     )
     app.state.repository = repository or build_repository()
 
