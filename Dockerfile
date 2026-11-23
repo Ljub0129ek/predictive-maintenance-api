@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# Kobler imaget på ghcr.io til GitHub-repoet, så CI må opdatere det
+LABEL org.opencontainers.image.source="https://github.com/Ljub0129ek/predictive-maintenance-api"
+LABEL org.opencontainers.image.description="Predictive Maintenance API (FastAPI + MySQL)"
+
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
