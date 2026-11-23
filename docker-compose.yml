@@ -1,6 +1,6 @@
 # Starter hele løsningen lokalt: API (FastAPI) + database (MySQL).
-# Kør:  docker compose up --build
-# Hemmeligheder (adgangskoder) ligger i filen .env, som ikke kommer på GitHub.
+# Start:  docker compose up --build
+# Hemmeligheder (adgangskoder) hentes fra filen .env, som ikke versionsstyres.
 
 services:
   db:
@@ -11,7 +11,7 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     ports:
-      # Kun til MySQL Workbench på din egen Mac (127.0.0.1 = ikke synlig på netværket)
+      # Til MySQL Workbench: kun tilgængelig lokalt (127.0.0.1), ikke fra netværket
       - "127.0.0.1:3307:3306"
     volumes:
       - db_data:/var/lib/mysql
@@ -37,7 +37,7 @@ services:
       API_KEY: ${API_KEY}
       AUDIT_LOG_FILE: /app/logs/audit.log
     volumes:
-      # Audit-loggen gemmes i mappen logs/ på din Mac (kommer ikke på GitHub)
+      # Audit-loggen gemmes i mappen logs/ på værten (versionsstyres ikke)
       - ./logs:/app/logs
     ports:
       - "8000:8000"

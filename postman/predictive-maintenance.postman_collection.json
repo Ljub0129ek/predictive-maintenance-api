@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Predictive Maintenance API",
-    "description": "Demo af flowet fra Delopgave 1: SensorTelemetryReceived -> threshold-check -> AnomalyDetected -> Alarm. Kør trinene i rækkefølge (eller hele mappen med Run).\n\nPOST-kaldene kræver API-nøgle: sæt variablen api_key (fanen Variables) til værdien API_KEY fra filen .env.",
+    "description": "Gennemløb af flowet fra Delopgave 1: SensorTelemetryReceived -> threshold-check -> AnomalyDetected -> Alarm. Trinene køres i rækkefølge (eller hele samlingen med Run).\n\nPOST-kaldene kræver API-nøgle: variablen api_key (fanen Variables) sættes til værdien API_KEY fra filen .env.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

@@ -16,7 +16,7 @@ from .serialization import event_to_record
 
 
 def _to_db_time(value: datetime) -> datetime:
-    # MySQL DATETIME har ingen tidszone, så vi gemmer altid UTC.
+    # MySQL DATETIME har ingen tidszone, så tider gemmes altid i UTC.
     return value.astimezone(UTC).replace(tzinfo=None)
 
 

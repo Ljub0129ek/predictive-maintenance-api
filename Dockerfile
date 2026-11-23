@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY predictive_maintenance ./predictive_maintenance
 
-# Kør ikke som root i containeren
+# Containeren kører ikke som root
 RUN useradd --create-home appuser && mkdir -p /app/logs && chown appuser /app/logs
 USER appuser
 

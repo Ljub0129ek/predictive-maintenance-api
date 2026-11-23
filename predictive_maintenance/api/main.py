@@ -185,7 +185,7 @@ def create_app(
         description=(
             "Modtager én måling fra en vindmølle. Er vibrationen over grænsen, "
             "registreres AnomalyDetected, der oprettes en alarm, og møllen markeres til vedligehold. "
-            "Kræver API-nøgle (tryk Authorize øverst). Højst 20 kald i minuttet. Vælg et eksempel i listen nedenfor."
+            "Kræver API-nøgle (angives under Authorize øverst). Højst 20 kald i minuttet. Eksempler kan vælges i listen nedenfor."
         ),
         responses={
             401: {"description": "Manglende eller forkert API-nøgle."},

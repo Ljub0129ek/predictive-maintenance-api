@@ -29,7 +29,7 @@ mysql-init/init.sql                                Tabeller og testdata (WTG-001
 tests/                                             Domæne- og API-tests
 docker-compose.yml, Dockerfile                     Kør API + MySQL i Docker
 .github/workflows/ci.yml                           CI: tests, sikkerhedsscans, Docker-build og push til ghcr.io
-postman/                                           Postman-samling til demoen
+postman/                                           Postman-samling med testtrin
 ```
 
 
@@ -38,7 +38,7 @@ postman/                                           Postman-samling til demoen
 Kræver Docker Desktop.
 
 ```bash
-cp .env.example .env          # vælg egne adgangskoder i .env
+cp .env.example .env          # udfyld egne adgangskoder i .env
 docker compose up --build
 ```
 
@@ -46,12 +46,12 @@ Swagger (interaktiv dokumentation): http://localhost:8000/docs
 
 ### Se databasen i MySQL Workbench
 
-MySQL er åben på `127.0.0.1:3307`, kun fra din egen computer (ikke fra netværket).
-I Workbench: opret en forbindelse med Hostname `127.0.0.1`, Port `3307`,
-Username og Password fra `DB_USER` og `DB_PASSWORD` i `.env`, og kør fx
+MySQL er kun tilgængelig lokalt på `127.0.0.1:3307` og ikke fra netværket.
+Forbindelse i Workbench: Hostname `127.0.0.1`, Port `3307`, Username og Password
+fra `DB_USER` og `DB_PASSWORD` i `.env`. Eksempel på forespørgsel:
 `SELECT * FROM predictive_maintenance.alarms;`
 
-Stop igen med `Ctrl+C` eller `docker compose down`.
+Løsningen stoppes med `Ctrl+C` eller `docker compose down`.
 Data i MySQL bliver gemt mellem genstarter. `docker compose down -v` sletter dem.
 
 
@@ -82,7 +82,7 @@ Eksempel:
 ```bash
 curl -X POST http://localhost:8000/api/v1/telemetry \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: <din API_KEY fra .env>" \
+  -H "X-API-Key: <API_KEY fra .env>" \
   -d '{"asset_id": "WTG-001", "sensor_type": "vibration", "value": 8.9, "unit": "mm/s"}'
 ```
 
@@ -93,10 +93,10 @@ curl -X POST http://localhost:8000/api/v1/telemetry \
 | 12.0         | Alarm, `CRITICAL`      |
 
 
-## Demo med Postman
+## Postman
 
-Importér `postman/predictive-maintenance.postman_collection.json` i Postman
-(Import -> vælg filen). Kør trinene i rækkefølge, eller hele samlingen med **Run**:
+Samlingen `postman/predictive-maintenance.postman_collection.json` importeres i Postman
+(Import). Trinene køres i rækkefølge, eller hele samlingen på én gang med **Run**:
 
 ```
 0 Health          1 Normal værdi 4.0    2 Høj værdi 8.9     3 Se alarmer
@@ -104,10 +104,10 @@ Importér `postman/predictive-maintenance.postman_collection.json` i Postman
 8 Ugyldig værdi -5 (422)
 ```
 
-Sæt først variablen `api_key` (samlingen -> fanen Variables) til `API_KEY` fra `.env`.
+Variablen `api_key` (samlingen -> fanen Variables) skal sættes til `API_KEY` fra `.env`.
 Hvert trin har små tests, der viser grønt, når svaret er som forventet.
-I Swagger (http://localhost:8000/docs) trykker du **Authorize** og indsætter nøglen. Derefter kan de samme eksempler vælges i en liste under `POST /api/v1/telemetry`.
-Start forfra med tom database: `docker compose down -v && docker compose up -d`.
+I Swagger (http://localhost:8000/docs) angives nøglen under **Authorize**. Derefter kan de samme eksempler vælges i en liste under `POST /api/v1/telemetry`.
+Nulstilling til tom database: `docker compose down -v && docker compose up -d`.
 
 
 ## Drift og overvågning
@@ -129,11 +129,11 @@ Start forfra med tom database: `docker compose down -v && docker compose up -d`.
 - **Rate limiting:** højst 20 kald i minuttet pr. IP-adresse på `POST /api/v1/telemetry`. Ellers svarer API'et 429.
   Kald med forkert nøgle tæller med, så man ikke kan gætte nøglen ved at prøve mange gange.
 - **Audit-log:** hvert kald logges (IP, metode, sti, status, tid). Afviste nøgler og rate limiting logges som `WARNING`.
-  API-nøglen og indholdet af kaldet logges aldrig. Loggen skrives til `logs/audit.log` (kommer ikke på GitHub)
+  API-nøglen og indholdet af kaldet logges aldrig. Loggen skrives til `logs/audit.log` (versionsstyres ikke)
   og kan også ses med `docker compose logs -f api`.
 - **Fælles fejlhåndtering:** uventede fejl giver 500 med en generisk besked. Detaljerne står kun i loggen.
 
-- Adgangskoder ligger i `.env`, som ikke kommer på GitHub (`.gitignore`).
+- Adgangskoder ligger i `.env`, som er udelukket fra versionsstyring (`.gitignore`).
 - Al SQL er parametriseret, så input ikke kan ændre SQL-sætningen.
 - Input valideres af Pydantic (kun `sensor_type` "vibration", værdi 0 til 100 mm/s, ellers 422) og af domænets value objects.
 - API-containeren kører ikke som root.
@@ -142,7 +142,7 @@ Start forfra med tom database: `docker compose down -v && docker compose up -d`.
   - **pip-audit** tjekker pakkerne i `requirements.txt` mod kendte sikkerhedshuller.
   Docker-imaget bygges kun, hvis både tests og scans er grønne.
 
-Kør scans lokalt:
+Scans kan også køres lokalt:
 
 ```bash
 pip install bandit==1.8.6 pip-audit==2.9.0
