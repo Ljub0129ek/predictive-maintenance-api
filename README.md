@@ -28,7 +28,7 @@ predictive_maintenance/infrastructure/             MySQL- og in-memory-lagring (
 mysql-init/init.sql                                Tabeller og testdata (WTG-001)
 tests/                                             Domæne- og API-tests
 docker-compose.yml, Dockerfile                     Kør API + MySQL i Docker
-.github/workflows/ci.yml                           CI: tests, sikkerhedsscans og Docker-build
+.github/workflows/ci.yml                           CI: tests, sikkerhedsscans, Docker-build og push til ghcr.io
 postman/                                           Postman-samling til demoen
 ```
 
@@ -74,6 +74,7 @@ POST  /api/v1/telemetry           Send en sensorværdi (kræver API-nøgle)
 GET   /api/v1/alarms?asset_id=    Se alarmer (evt. for ét asset)
 GET   /api/v1/events?asset_id=    Se domænehændelser
 GET   /health                     Kører API'et, og svarer databasen?
+GET   /metrics                    Tællere og svartider (Prometheus-format)
 ```
 
 Eksempel:
@@ -109,6 +110,17 @@ I Swagger (http://localhost:8000/docs) trykker du **Authorize** og indsætter n�
 Start forfra med tom database: `docker compose down -v && docker compose up -d`.
 
 
+## Drift og overvågning
+
+- **Healthcheck:** Docker kalder selv `/health` hvert 15. sekund. `docker compose ps` viser `healthy`,
+  og containeren genstartes, hvis den går ned.
+- **Metrics:** `GET /metrics` viser bl.a. `telemetry_received_total`, `anomalies_detected_total`,
+  `http_requests_total` (pr. status) og `http_request_duration_seconds` (svartid). Kan bruges til SLI/SLO,
+  fx andel fejl og svartid.
+- **Container-image:** ved hvert push til `main` lægger CI imaget på GitHub Container Registry
+  (`ghcr.io/ljub0129ek/predictive-maintenance-api`), men kun når tests og sikkerhedsscan er grønne.
+
+
 ## Sikkerhed
 
 - `POST /api/v1/telemetry` kræver en API-nøgle i headeren `X-API-Key`, så kun godkendte sensorer kan sende data.
@@ -117,7 +129,8 @@ Start forfra med tom database: `docker compose down -v && docker compose up -d`.
 - **Rate limiting:** højst 20 kald i minuttet pr. IP-adresse på `POST /api/v1/telemetry`. Ellers svarer API'et 429.
   Kald med forkert nøgle tæller med, så man ikke kan gætte nøglen ved at prøve mange gange.
 - **Audit-log:** hvert kald logges (IP, metode, sti, status, tid). Afviste nøgler og rate limiting logges som `WARNING`.
-  API-nøglen og indholdet af kaldet logges aldrig. Se loggen med `docker compose logs -f api`.
+  API-nøglen og indholdet af kaldet logges aldrig. Loggen skrives til `logs/audit.log` (kommer ikke på GitHub)
+  og kan også ses med `docker compose logs -f api`.
 - **Fælles fejlhåndtering:** uventede fejl giver 500 med en generisk besked. Detaljerne står kun i loggen.
 
 - Adgangskoder ligger i `.env`, som ikke kommer på GitHub (`.gitignore`).

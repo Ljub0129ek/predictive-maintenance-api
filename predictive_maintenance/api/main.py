@@ -7,13 +7,15 @@ import time
 from typing import Annotated
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from fastapi.security import APIKeyHeader
 
 from ..application.services import AssetNotFound, handle_telemetry
 from ..domain.model import Asset
 from ..domain.ports import AssetRepository
 from ..infrastructure.serialization import event_to_record
+from . import metrics
 from .rate_limit import RateLimiter
 from .schemas import AlarmOut, EventOut, TelemetryIn, TelemetryOut
 
@@ -68,6 +70,20 @@ TELEMETRY_EXAMPLES = {
 # Audit-log: hvem kaldte hvad, hvornår og med hvilket resultat (Hands-on 3)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 audit_log = logging.getLogger("audit")
+audit_log.setLevel(logging.INFO)
+
+
+def configure_audit_file(path: str | None) -> None:
+    """Skriver også audit-loggen til en fil, hvis AUDIT_LOG_FILE er sat."""
+    if not path:
+        return
+    if any(isinstance(h, logging.FileHandler) and h.baseFilename == os.path.abspath(path)
+           for h in audit_log.handlers):
+        return  # Allerede sat op
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    handler = logging.FileHandler(path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    audit_log.addHandler(handler)
 
 
 def client_ip(request: Request) -> str:
@@ -103,6 +119,7 @@ def create_app(
 
     app.state.api_key = api_key if api_key is not None else os.getenv("API_KEY", "")
 
+    configure_audit_file(os.getenv("AUDIT_LOG_FILE"))
     app.state.rate_limiter = RateLimiter(max_calls=rate_limit_per_minute, window_seconds=60)
 
     @app.middleware("http")
@@ -110,7 +127,15 @@ def create_app(
         """Logger hvert kald. API-nøglen og kroppen logges aldrig."""
         start = time.perf_counter()
         response = await call_next(request)
-        ms = (time.perf_counter() - start) * 1000
+        seconds = time.perf_counter() - start
+        ms = seconds * 1000
+        # Brug rute-skabelonen (fx /api/v1/alarms), så ukendte stier ikke giver mange tællere
+        route = request.scope.get("route")
+        path = route.path if route is not None else "ukendt"
+        metrics.HTTP_REQUESTS.labels(request.method, path, str(response.status_code)).inc()
+        metrics.HTTP_LATENCY.labels(request.method, path).observe(seconds)
+        if path == "/health" and client_ip(request) == "127.0.0.1":
+            return response  # Dockers egen healthcheck hvert 15. sekund fylder ikke audit-loggen
         audit_log.info(
             "ip=%s method=%s path=%s status=%s ms=%.1f",
             client_ip(request), request.method, request.url.path, response.status_code, ms,
@@ -178,6 +203,9 @@ def create_app(
             raise HTTPException(status_code=404, detail="Asset ikke fundet.")
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
+        metrics.TELEMETRY_RECEIVED.labels(body.sensor_type).inc()
+        for alarm in result.alarms:
+            metrics.ANOMALIES_DETECTED.labels(alarm.severity.value).inc()
         return TelemetryOut(
             status="PROCESSED",
             asset_id=result.asset.asset_id,
@@ -217,6 +245,16 @@ def create_app(
         if not repo.ping():
             return JSONResponse(status_code=503, content={"status": "error", "database": "down"})
         return {"status": "ok", "database": "up"}
+
+    @app.get(
+        "/metrics",
+        tags=["drift"],
+        summary="Metrics til overvågning",
+        description="Tællere og svartider i Prometheus-format, fx antal målinger, anomalier og fejl.",
+        response_class=Response,
+    )
+    def get_metrics():
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     return app
 

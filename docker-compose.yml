@@ -35,8 +35,13 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       API_KEY: ${API_KEY}
+      AUDIT_LOG_FILE: /app/logs/audit.log
+    volumes:
+      # Audit-loggen gemmes i mappen logs/ på din Mac (kommer ikke på GitHub)
+      - ./logs:/app/logs
     ports:
       - "8000:8000"
+    restart: unless-stopped
 
 volumes:
   db_data:

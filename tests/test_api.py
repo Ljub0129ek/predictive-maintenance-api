@@ -143,3 +143,41 @@ def test_unexpected_error_gives_generic_500():
     assert r.status_code == 500
     assert "hemmelig" not in r.text
     assert r.json() == {"detail": "Der skete en intern fejl. Prøv igen senere."}
+
+
+def test_metrics_count_telemetry_and_anomalies(client):
+    def value(name, label):
+        for line in client.get("/metrics").text.splitlines():
+            if line.startswith(name + "{") and label in line:
+                return float(line.rsplit(" ", 1)[1])
+        return 0.0
+
+    before_t = value("telemetry_received_total", 'sensor_type="vibration"')
+    before_a = value("anomalies_detected_total", 'severity="WARNING"')
+    send(client, 4.0)
+    send(client, 8.9)
+    assert value("telemetry_received_total", 'sensor_type="vibration"') == before_t + 2
+    assert value("anomalies_detected_total", 'severity="WARNING"') == before_a + 1
+    assert 'path="/api/v1/telemetry"' in client.get("/metrics").text
+
+
+def test_audit_log_is_written_to_file(tmp_path, monkeypatch):
+    import logging
+
+    log_file = tmp_path / "audit.log"
+    monkeypatch.setenv("AUDIT_LOG_FILE", str(log_file))
+    c = TestClient(create_app(repository=InMemoryAssetRepository(assets=[Asset("WTG-001")]), api_key=TEST_KEY))
+    c.post(
+        "/api/v1/telemetry",
+        json={"asset_id": "WTG-001", "sensor_type": "vibration", "value": 4.0, "unit": "mm/s"},
+        headers={"X-API-Key": "gaet-5678"},
+    )
+    audit = logging.getLogger("audit")
+    for h in list(audit.handlers):
+        if isinstance(h, logging.FileHandler):
+            h.close()
+            audit.removeHandler(h)
+    text = log_file.read_text(encoding="utf-8")
+    assert "WARNING Afvist API-nøgle" in text
+    assert "status=401" in text
+    assert "gaet-5678" not in text
