@@ -17,7 +17,12 @@ class TelemetryIn(BaseModel):
         min_length=1, max_length=64, description="Sensortype. Kun vibration tjekkes mod grænsen.",
         examples=["vibration"],
     )
-    value: float = Field(description="Den målte værdi.", examples=[8.9])
+    value: float = Field(
+        ge=0,
+        le=100,
+        description="Den målte værdi, 0 til 100 (mm/s). Uden for det giver 422.",
+        examples=[8.9],
+    )
     unit: str = Field(min_length=1, max_length=16, description="Enhed, fx mm/s.", examples=["mm/s"])
 
 

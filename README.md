@@ -44,6 +44,13 @@ docker compose up --build
 
 Swagger (interaktiv dokumentation): http://localhost:8000/docs
 
+### Se databasen i MySQL Workbench
+
+MySQL er åben på `127.0.0.1:3307`, kun fra din egen computer (ikke fra netværket).
+I Workbench: opret en forbindelse med Hostname `127.0.0.1`, Port `3307`,
+Username og Password fra `DB_USER` og `DB_PASSWORD` i `.env`, og kør fx
+`SELECT * FROM predictive_maintenance.alarms;`
+
 Stop igen med `Ctrl+C` eller `docker compose down`.
 Data i MySQL bliver gemt mellem genstarter. `docker compose down -v` sletter dem.
 
@@ -93,6 +100,7 @@ Importér `postman/predictive-maintenance.postman_collection.json` i Postman
 ```
 0 Health          1 Normal værdi 4.0    2 Høj værdi 8.9     3 Se alarmer
 4 Kritisk 12.0    5 Se hændelser        6 Ukendt mølle (404)  7 Uden API-nøgle (401)
+8 Ugyldig værdi -5 (422)
 ```
 
 Sæt først variablen `api_key` (samlingen -> fanen Variables) til `API_KEY` fra `.env`.
@@ -106,10 +114,15 @@ Start forfra med tom database: `docker compose down -v && docker compose up -d`.
 - `POST /api/v1/telemetry` kræver en API-nøgle i headeren `X-API-Key`, så kun godkendte sensorer kan sende data.
   Mangler nøglen eller er den forkert, svarer API'et 401. Er der ingen nøgle sat op på serveren, afvises alle kald (sikker standard).
   Læse-endpoints og `/health` er åbne i denne MVP.
+- **Rate limiting:** højst 20 kald i minuttet pr. IP-adresse på `POST /api/v1/telemetry`. Ellers svarer API'et 429.
+  Kald med forkert nøgle tæller med, så man ikke kan gætte nøglen ved at prøve mange gange.
+- **Audit-log:** hvert kald logges (IP, metode, sti, status, tid). Afviste nøgler og rate limiting logges som `WARNING`.
+  API-nøglen og indholdet af kaldet logges aldrig. Se loggen med `docker compose logs -f api`.
+- **Fælles fejlhåndtering:** uventede fejl giver 500 med en generisk besked. Detaljerne står kun i loggen.
 
 - Adgangskoder ligger i `.env`, som ikke kommer på GitHub (`.gitignore`).
 - Al SQL er parametriseret, så input ikke kan ændre SQL-sætningen.
-- Input valideres af Pydantic og af domænets value objects.
+- Input valideres af Pydantic (vibration skal være 0 til 100 mm/s, ellers 422) og af domænets value objects.
 - API-containeren kører ikke som root.
 - CI kører to sikkerhedsscans ved hvert push (DevSecOps):
   - **Bandit** scanner koden for usikre mønstre, fx SQL-injection og hårdkodede adgangskoder.

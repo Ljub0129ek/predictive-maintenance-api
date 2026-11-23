@@ -334,6 +334,49 @@
         },
         "description": "Samme høje værdi 8.9, men uden API-nøgle. Kaldet afvises med 401, og der oprettes ingen alarm."
       }
+    },
+    {
+      "name": "8 Ugyldig værdi -5 (fejl 422)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"asset_id\": \"WTG-001\",\n  \"sensor_type\": \"vibration\",\n  \"value\": -5,\n  \"unit\": \"mm/s\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/telemetry",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "telemetry"
+          ]
+        },
+        "description": "Negativ vibration er ugyldig. Pydantic afviser den med 422, før den når domænet."
+      }
     }
   ]
 }

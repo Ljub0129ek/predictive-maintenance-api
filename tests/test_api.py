@@ -90,3 +90,56 @@ def test_no_key_configured_refuses_all(client):
 def test_health_needs_no_key():
     app = create_app(repository=InMemoryAssetRepository(assets=[Asset("WTG-001")]), api_key="k")
     assert TestClient(app).get("/health").status_code == 200
+
+
+@pytest.mark.parametrize("value", [-0.1, 100.1])
+def test_vibration_outside_0_to_100_gives_422(client, value):
+    assert send(client, value).status_code == 422
+
+
+def test_rate_limit_gives_429_after_20_calls():
+    repo = InMemoryAssetRepository(assets=[Asset("WTG-001")])
+    c = TestClient(create_app(repository=repo, api_key=TEST_KEY), headers={"X-API-Key": TEST_KEY})
+    codes = [send(c, 4.0).status_code for _ in range(21)]
+    assert codes[:20] == [200] * 20
+    assert codes[20] == 429
+
+
+def test_rate_limit_also_counts_wrong_keys():
+    repo = InMemoryAssetRepository(assets=[Asset("WTG-001")])
+    c = TestClient(create_app(repository=repo, api_key=TEST_KEY, rate_limit_per_minute=3))
+    codes = [send(c, 4.0).status_code for _ in range(4)]  # Ingen nøgle sendt
+    assert codes == [401, 401, 401, 429]
+
+
+def test_wrong_key_is_logged_as_warning(client, caplog):
+    client.post(
+        "/api/v1/telemetry",
+        json={"asset_id": "WTG-001", "sensor_type": "vibration", "value": 4.0, "unit": "mm/s"},
+        headers={"X-API-Key": "gaet-1234"},
+    )
+    warnings = [r for r in caplog.records if r.name == "audit" and r.levelname == "WARNING"]
+    assert any("Afvist API-nøgle" in r.getMessage() for r in warnings)
+    assert all("gaet-1234" not in r.getMessage() for r in caplog.records)  # Nøglen logges aldrig
+
+
+def test_every_call_is_audit_logged(client, caplog):
+    with caplog.at_level("INFO", logger="audit"):
+        client.get("/health")
+    assert any("path=/health status=200" in r.getMessage() for r in caplog.records)
+
+
+class BrokenRepository(InMemoryAssetRepository):
+    def list_alarms(self, asset_id=None):
+        raise RuntimeError("hemmelig intern detalje")
+
+
+def test_unexpected_error_gives_generic_500():
+    c = TestClient(
+        create_app(repository=BrokenRepository(assets=[Asset("WTG-001")]), api_key=TEST_KEY),
+        raise_server_exceptions=False,
+    )
+    r = c.get("/api/v1/alarms")
+    assert r.status_code == 500
+    assert "hemmelig" not in r.text
+    assert r.json() == {"detail": "Der skete en intern fejl. Prøv igen senere."}

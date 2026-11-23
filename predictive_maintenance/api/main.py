@@ -1,8 +1,9 @@
 """FastAPI: inbound adapter, der oversætter HTTP-kald til kald på applikationslaget."""
 
+import logging
 import os
 import secrets
-
+import time
 from typing import Annotated
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
@@ -13,6 +14,7 @@ from ..application.services import AssetNotFound, handle_telemetry
 from ..domain.model import Asset
 from ..domain.ports import AssetRepository
 from ..infrastructure.serialization import event_to_record
+from .rate_limit import RateLimiter
 from .schemas import AlarmOut, EventOut, TelemetryIn, TelemetryOut
 
 
@@ -63,6 +65,15 @@ TELEMETRY_EXAMPLES = {
     },
 }
 
+# Audit-log: hvem kaldte hvad, hvornår og med hvilket resultat (Hands-on 3)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+audit_log = logging.getLogger("audit")
+
+
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "ukendt"
+
+
 API_KEY_HEADER = APIKeyHeader(
     name="X-API-Key",
     auto_error=False,
@@ -72,7 +83,11 @@ API_KEY_HEADER = APIKeyHeader(
 ASSET_FILTER = Query(None, description="Vis kun for ét asset, fx WTG-001.", examples=["WTG-001"])
 
 
-def create_app(repository: AssetRepository | None = None, api_key: str | None = None) -> FastAPI:
+def create_app(
+    repository: AssetRepository | None = None,
+    api_key: str | None = None,
+    rate_limit_per_minute: int = 20,
+) -> FastAPI:
     app = FastAPI(
         title="Predictive Maintenance API",
         version="1.0.0",
@@ -88,8 +103,39 @@ def create_app(repository: AssetRepository | None = None, api_key: str | None = 
 
     app.state.api_key = api_key if api_key is not None else os.getenv("API_KEY", "")
 
+    app.state.rate_limiter = RateLimiter(max_calls=rate_limit_per_minute, window_seconds=60)
+
+    @app.middleware("http")
+    async def audit_middleware(request: Request, call_next):
+        """Logger hvert kald. API-nøglen og kroppen logges aldrig."""
+        start = time.perf_counter()
+        response = await call_next(request)
+        ms = (time.perf_counter() - start) * 1000
+        audit_log.info(
+            "ip=%s method=%s path=%s status=%s ms=%.1f",
+            client_ip(request), request.method, request.url.path, response.status_code, ms,
+        )
+        return response
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception):
+        """Fælles fejlhåndtering: detaljerne logges, klienten får en generisk besked."""
+        audit_log.exception("Uventet fejl: method=%s path=%s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "Der skete en intern fejl. Prøv igen senere."})
+
     def get_repo(request: Request) -> AssetRepository:
         return request.app.state.repository
+
+    def rate_limit(request: Request) -> None:
+        """Højst 20 kald i minuttet pr. IP. Tæller også kald med forkert nøgle."""
+        ip = client_ip(request)
+        if not request.app.state.rate_limiter.allow(ip):
+            audit_log.warning("Rate limit overskredet: ip=%s path=%s", ip, request.url.path)
+            raise HTTPException(
+                status_code=429,
+                detail="For mange kald. Prøv igen om et minut.",
+                headers={"Retry-After": "60"},
+            )
 
     def require_api_key(request: Request, key: str | None = Depends(API_KEY_HEADER)) -> None:
         """Kun klienter med den rigtige nøgle må sende sensorværdier."""
@@ -98,6 +144,10 @@ def create_app(repository: AssetRepository | None = None, api_key: str | None = 
             # Sikker standard: uden en nøgle sat op afvises alle kald
             raise HTTPException(status_code=503, detail="API-nøglen er ikke sat op på serveren.")
         if not key or not secrets.compare_digest(key, expected):
+            audit_log.warning(
+                "Afvist API-nøgle: ip=%s path=%s grund=%s",
+                client_ip(request), request.url.path, "mangler" if not key else "forkert",
+            )
             raise HTTPException(status_code=401, detail="Manglende eller forkert API-nøgle.")
 
     @app.post(
@@ -108,18 +158,20 @@ def create_app(repository: AssetRepository | None = None, api_key: str | None = 
         description=(
             "Modtager én måling fra en vindmølle. Er vibrationen over grænsen, "
             "registreres AnomalyDetected, der oprettes en alarm, og møllen markeres til vedligehold. "
-            "Kræver API-nøgle (tryk Authorize øverst). Vælg et eksempel i listen nedenfor."
+            "Kræver API-nøgle (tryk Authorize øverst). Højst 20 kald i minuttet. Vælg et eksempel i listen nedenfor."
         ),
         responses={
             401: {"description": "Manglende eller forkert API-nøgle."},
             404: {"description": "Asset ikke fundet."},
-            422: {"description": "Ugyldigt input."},
+            422: {"description": "Ugyldigt input, fx vibration under 0 eller over 100."},
+            429: {"description": "For mange kald (højst 20 i minuttet)."},
         },
-        dependencies=[Depends(require_api_key)],
+        dependencies=[Depends(rate_limit), Depends(require_api_key)],
     )
     def post_telemetry(
         body: Annotated[TelemetryIn, Body(openapi_examples=TELEMETRY_EXAMPLES)],
-        repo: AssetRepository = Depends(get_repo)):
+        repo: AssetRepository = Depends(get_repo),
+    ):
         try:
             result = handle_telemetry(repo, body.asset_id, body.sensor_type, body.value, body.unit)
         except AssetNotFound:
